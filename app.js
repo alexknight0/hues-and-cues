@@ -9,7 +9,6 @@ const KEY_GAME = "hues-and-cues:game";
 const KEY_SETUP = "hues-and-cues:setup";
 const MIN_PLAYERS = 3;
 const MAX_PLAYERS = 10;
-const HISTORY_MAX = 40;
 
 // Cone colours, chosen to stand out from each other. DARK_TEXT ones get black initials.
 const PALETTE = ["#e03131", "#1c7ed6", "#2f9e44", "#fab005", "#f76707", "#862e9c",
@@ -30,8 +29,8 @@ const el = (tag, props = {}, ...kids) => {
 //   target, cues: [first, second], cones: [{p, cell, pass}], pass, turn, pending, gains }
 // phase: handoff | card | cue | guess | ready | scored | over
 let S = null;
-let history = [];
 let peeking = false;
+let boardView = false; // game over: looking at the final board instead of the scores
 let setup = loadSetup();
 
 function loadSetup() {
@@ -48,17 +47,14 @@ function loadSetup() {
 const saveSetup = () => localStorage.setItem(KEY_SETUP, JSON.stringify(setup));
 
 function save() {
-  if (S) localStorage.setItem(KEY_GAME, JSON.stringify({ S, history }));
+  if (S) localStorage.setItem(KEY_GAME, JSON.stringify({ S }));
   else localStorage.removeItem(KEY_GAME);
 }
 
 function loadGame() {
   try {
     const g = JSON.parse(localStorage.getItem(KEY_GAME));
-    if (g && g.S && g.S.players) {
-      S = g.S;
-      history = g.history || [];
-    }
+    if (g && g.S && g.S.players) S = g.S;
   } catch { S = null; }
 }
 
@@ -73,17 +69,6 @@ function order(pass) {
   return pass === 1 ? list : list.reverse();
 }
 const guesser = () => order(S.pass)[S.turn];
-
-function snapshot() {
-  history.push(JSON.stringify(S));
-  if (history.length > HISTORY_MAX) history.shift();
-}
-
-function undo() {
-  if (!history.length) return;
-  S = JSON.parse(history.pop());
-  commit();
-}
 
 function commit() {
   save();
@@ -105,22 +90,20 @@ function startGame() {
     phase: "handoff",
     cones: [],
   };
-  history = [];
   newRound();
 }
 
 function newRound() {
+  boardView = false;
   Object.assign(S, {
     phase: "handoff", card: drawCard(), target: null, cues: ["", ""],
     cones: [], pass: 1, turn: 0, pending: null, gains: null,
   });
-  history = [];
   peeking = false;
   commit();
 }
 
 function startGuessing(pass) {
-  snapshot();
   S.phase = "guess";
   S.pass = pass;
   S.turn = 0;
@@ -145,7 +128,6 @@ function tapCell(cell) {
 
 function confirmCone() {
   if (S.phase !== "guess" || S.pending == null) return;
-  snapshot();
   S.cones.push({ p: guesser(), cell: S.pending, pass: S.pass });
   S.pending = null;
   S.turn++;
@@ -157,13 +139,11 @@ function confirmCone() {
 }
 
 function skipSecondCue() {
-  snapshot();
   S.phase = "ready";
   commit();
 }
 
 function reveal() {
-  snapshot();
   const gains = S.players.map(() => 0);
   for (const c of S.cones) gains[c.p] += guessPoints(c.cell, S.target);
   gains[giver()] += cueGiverPoints(S.cones.map((c) => c.cell), S.target);
@@ -175,7 +155,6 @@ function reveal() {
 
 function nextRound() {
   if (S.round + 1 >= totalRounds()) {
-    snapshot();
     S.phase = "over";
     commit();
     return;
@@ -284,11 +263,6 @@ function button(text, onClick, cls = "") {
 
 const name = (p) => S.players[p].name;
 const strong = (text) => el("b", { textContent: text });
-const undoButton = () => {
-  const b = button("Undo", undo);
-  b.disabled = !history.length;
-  return b;
-};
 const peekButton = () => button("Show my card", () => { peeking = true; render(); });
 
 function cueInput(i) {
@@ -323,7 +297,6 @@ function renderBar() {
         ? " is the cue giver. Say a one-word cue."
         : ": say a second cue of up to two words, or skip it.");
       cues.prepend(cueInput(first ? 0 : 1), " ");
-      if (!first) actions.append(undoButton());
       actions.append(peekButton());
       if (!first) actions.append(button("Skip", skipSecondCue));
       actions.append(button(first ? "Start guessing" : "Second guesses", () => startGuessing(S.pass), "primary"));
@@ -342,12 +315,16 @@ function renderBar() {
         sw.style.background = COLOURS[S.pending];
         ok.replaceChildren(sw, `Place on ${cellName(S.pending)}`);
       } else ok.disabled = true;
-      actions.append(undoButton(), ok);
+      actions.append(ok);
       break;
     }
     case "ready":
       text.append("All cones are down. ", strong(name(g)), ", reveal your colour.");
-      actions.append(undoButton(), button("Reveal", reveal, "primary"));
+      actions.append(button("Reveal", reveal, "primary"));
+      break;
+    case "over":
+      text.append("Game over.");
+      actions.append(button("Final scores", () => { boardView = false; render(); }, "primary"));
       break;
     case "scored": {
       const sw = el("span", { className: "swatch" });
@@ -358,7 +335,7 @@ function renderBar() {
         ? gotPoints.map(([i, v]) => `${name(i)} +${v}${i === g ? " (cue giver)" : ""}`).join(" · ")
         : "Nobody scored this round.");
       const last = S.round + 1 >= totalRounds();
-      actions.append(undoButton(), button(last ? "Final scores" : "Next round", nextRound, "primary"));
+      actions.append(button(last ? "Final scores" : "Next round", nextRound, "primary"));
       break;
     }
   }
@@ -387,7 +364,7 @@ function renderCover() {
   const cover = $("#cover");
   const box = $("#cover-box");
   box.replaceChildren();
-  const show = S && (S.phase === "handoff" || S.phase === "card" || S.phase === "over" || peeking);
+  const show = S && (S.phase === "handoff" || S.phase === "card" || (S.phase === "over" && !boardView) || peeking);
   cover.hidden = !show;
   if (!show) return;
   cover.classList.toggle("final", S.phase === "over");
@@ -426,8 +403,7 @@ function renderCover() {
     const go = button("Hide card and give the cue", () => {
       S.phase = "cue";
       S.pass = 1;
-      history = [];
-      commit();
+          commit();
     }, "primary big");
     go.disabled = S.target == null;
     box.append(el("h2", {}, strong(name(g)), ", choose a colour"), grid,
@@ -453,8 +429,8 @@ function renderCover() {
   box.append(el("h2", { textContent: winners.length > 1 ? `Tie: ${winners.join(" & ")}` : `${winners[0]} wins!` }),
     list,
     el("div", { className: "dlg-actions" },
-      button("Back to the board", undo),
-      button("Change players", () => { S = null; history = []; commit(); }),
+      button("See the board", () => { boardView = true; render(); }),
+      button("Change players", () => { S = null; commit(); }),
       button("Play again", startGame, "primary")));
 }
 
@@ -545,8 +521,7 @@ $("#new-btn").addEventListener("click", () => {
   if (!S) return;
   confirmDialog("End this game and go back to the player list?", () => {
     S = null;
-    history = [];
-    commit();
+      commit();
   });
 });
 
@@ -582,7 +557,7 @@ buildBoard();
 render();
 
 // For tests: window.__hc.state() / .set(state)
-window.__hc = { state: () => S, set: (s) => { S = s; history = []; commit(); } };
+window.__hc = { state: () => S, set: (s) => { S = s; commit(); } };
 
 // ---------- update light ----------
 // The update light is shared by Alex's Pages sites (github.com/alexknight0/pages-common).

@@ -1,27 +1,40 @@
 // Board colours and scoring rules. No DOM here.
 //
-// The real board is 30 columns (1-30) by 16 rows (A-P): hue changes along a row and
-// rows run from pale at the top to dark at the bottom. These colours are an
-// approximation built in OKLCH: each row has one lightness and each column one hue.
-// - Hues are spaced so neighbouring columns differ by the same amount to the eye
-//   (equal steps in OKLab at a mid row), not by equal degrees, which wasted columns on
-//   near-identical greens and teals and jumped through the reds.
-// - Chroma follows a smooth curve per row (soft pastels at the top, richest in the
-//   middle rows, muted at the bottom), capped by what sRGB can show. Without the cap
-//   some hues (cyan, magenta) went neon while their neighbours couldn't follow.
+// The board is 30 columns (1-30) by 16 rows (A-P). Like the printed game, the colours
+// are laid out as a colour wheel spread over the rectangle: almost white near the
+// middle (row I, column 16), getting stronger towards the edges, with the hue set by
+// the direction from the centre. Clockwise from the top: red, magenta, purple, blue,
+// cyan, green, yellow, orange, back to a brownish red in the top-left corner. Corners
+// sit further from the centre than the edges, so they get darker.
+// The values are our own (computed in OKLCH), not copied from the printed board.
 
 export const COLS = 30;
 export const ROWS = 16;
 export const ROW_NAMES = "ABCDEFGHIJKLMNOP";
 
-const L_TOP = 0.94;
-const L_BOTTOM = 0.32;
-const HUE_START = 20; // a pinkish red, so column 1 sits next to column 30 on the colour wheel
-const C_PEAK = 0.17; // chroma of the richest row
-const C_TOP = 0.07; // chroma of the palest row
-const C_BOTTOM = 0.11; // chroma of the darkest row
-const PEAK_ROW = 0.42; // where (0 = top, 1 = bottom) the board is most colourful
+const CENTRE_ROW = 8.3; // 0-based: just below row I
+const CENTRE_COL = 16.5; // 0-based: around column 17
+const L_CENTRE = 0.965;
+const C_MAX = 0.19; // strongest chroma allowed, so no single hue goes neon
 const GAMUT_SHARE = 0.97; // stay a little inside the sRGB edge
+const CORNER_DARKEN = 0.17; // lightness lost going from an edge out to a corner
+
+// Direction from the centre (degrees clockwise from straight up) → colour at the edge.
+// Hues are OKLCH degrees, unwrapped so they only ever decrease; L is the edge lightness.
+const ANCHORS = [
+  { at: 0, h: 27, L: 0.6 }, // red (top middle)
+  { at: 40, h: -10, L: 0.6 }, // magenta
+  { at: 75, h: -60, L: 0.46 }, // purple
+  { at: 100, h: -95, L: 0.4 }, // indigo (right middle)
+  { at: 140, h: -128, L: 0.68 }, // sky blue
+  { at: 165, h: -165, L: 0.72 }, // cyan / teal
+  { at: 195, h: -215, L: 0.66 }, // green (bottom middle)
+  { at: 235, h: -240, L: 0.82 }, // yellow-green
+  { at: 270, h: -258, L: 0.91 }, // yellow (left middle)
+  { at: 300, h: -290, L: 0.78 }, // orange
+  { at: 330, h: -312, L: 0.62 }, // red-orange
+  { at: 360, h: -333, L: 0.6 }, // back to red
+];
 
 export const cellIndex = (row, col) => row * COLS + col;
 export const rowOf = (cell) => Math.floor(cell / COLS);
@@ -68,49 +81,28 @@ function maxChroma(L, h) {
   return lo * GAMUT_SHARE;
 }
 
-// Smooth bump: C_TOP at t = 0, C_PEAK at PEAK_ROW, C_BOTTOM at t = 1.
-function rowChroma(t) {
-  const [edge, u] = t < PEAK_ROW ? [C_TOP, t / PEAK_ROW] : [C_BOTTOM, (1 - t) / (1 - PEAK_ROW)];
-  const s = Math.sin((u * Math.PI) / 2);
-  return edge + (C_PEAK - edge) * s;
+function edgeColour(angle) {
+  let i = 0;
+  while (ANCHORS[i + 1].at < angle) i++;
+  const a = ANCHORS[i];
+  const b = ANCHORS[i + 1];
+  const f = (angle - a.at) / (b.at - a.at);
+  return { h: (((a.h + (b.h - a.h) * f) % 360) + 360) % 360, L: a.L + (b.L - a.L) * f };
 }
 
-const chromaAt = (L, h, C) => Math.min(C, maxChroma(L, h));
-
-// Column hues: walk round the wheel in small steps at a mid row, measure the OKLab
-// distance travelled, and put the 30 columns at equal distances along that path.
-const HUES = (() => {
-  const L = 0.66;
-  const C = rowChroma(PEAK_ROW + 0.1);
-  const steps = 720;
-  const lab = (h) => {
-    const c = chromaAt(L, h, C);
-    return [L, c * Math.cos((h * Math.PI) / 180), c * Math.sin((h * Math.PI) / 180)];
-  };
-  const len = [0];
-  let prev = lab(HUE_START);
-  for (let i = 1; i <= steps; i++) {
-    const cur = lab(HUE_START + (360 * i) / steps);
-    len.push(len[i - 1] + Math.hypot(cur[0] - prev[0], cur[1] - prev[1], cur[2] - prev[2]));
-    prev = cur;
-  }
-  const total = len[steps];
-  const hues = [];
-  let j = 0;
-  for (let c = 0; c < COLS; c++) {
-    const want = (total * c) / COLS;
-    while (len[j + 1] < want) j++;
-    const f = (want - len[j]) / (len[j + 1] - len[j] || 1);
-    hues.push((HUE_START + (360 * (j + f)) / steps) % 360);
-  }
-  return hues;
-})();
-
 function cellColour(row, col) {
-  const t = row / (ROWS - 1);
-  const L = L_TOP + (L_BOTTOM - L_TOP) * t;
-  const h = HUES[col];
-  return { hex: toHex(oklchToLinear(L, chromaAt(L, h, rowChroma(t)), h)), L };
+  // Square-ish distance: 1 on the edge of the board, ~1.4 in the corners.
+  const x = (col - CENTRE_COL) / (col < CENTRE_COL ? CENTRE_COL : COLS - 1 - CENTRE_COL);
+  const y = (row - CENTRE_ROW) / (row < CENTRE_ROW ? CENTRE_ROW : ROWS - 1 - CENTRE_ROW);
+  const d = Math.hypot(x, y);
+  const angle = ((Math.atan2(x, -y) * 180) / Math.PI + 360) % 360;
+  const edge = edgeColour(angle);
+  const t = Math.min(1, d);
+  const ease = 1 - (1 - t) ** 1.6; // leaves the pale centre quickly
+  let L = L_CENTRE + (edge.L - L_CENTRE) * ease;
+  if (d > 1) L -= CORNER_DARKEN * Math.min(1, (d - 1) / 0.41);
+  const C = Math.min(C_MAX * ease ** 0.9, maxChroma(L, edge.h));
+  return { hex: toHex(oklchToLinear(L, C, edge.h)), L };
 }
 
 // COLOURS[cell] = "#rrggbb"; LIGHT[cell] = true when dark text reads better on it.
