@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#1c1c22">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Hues &amp; Cues">
+  <title>Hues and Cues</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header>
+    <a class="home-link" href="../home/" aria-label="Home page (all sites)" title="Home page (all sites)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5M5.5 9.5V20h5v-5.5h3V20h5V9.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <h1>Hues &amp; Cues</h1>
+    <button id="version" type="button" class="version" data-state="checking" aria-label="Checking for updates…"><i></i><span></span></button>
+    <span id="round-info"></span>
+    <span class="grow"></span>
+    <button id="rules-btn" type="button" class="ctl">Rules</button>
+    <button id="new-btn" type="button" class="ctl">New game</button>
+  </header>
+
+  <!-- Setup: who is playing -->
+  <main id="setup" class="screen" hidden>
+    <div class="setup-card">
+      <h2>Players</h2>
+      <p class="hint">In seating order (the cue giver passes the iPad clockwise). Tap a colour to change it.</p>
+      <ol id="player-list"></ol>
+      <button id="add-player" type="button" class="ctl">+ Add player</button>
+      <div class="times">
+        <span>Each player is the cue giver</span>
+        <div class="seg" role="radiogroup">
+          <button type="button" data-times="1" role="radio">Once</button>
+          <button type="button" data-times="2" role="radio">Twice</button>
+        </div>
+      </div>
+      <p id="setup-summary" class="hint"></p>
+      <button id="start" type="button" class="ctl primary big">Start game</button>
+    </div>
+  </main>
+
+  <!-- The game -->
+  <main id="game" class="screen" hidden>
+    <div id="board-wrap"><div id="board" aria-label="Colour board"></div></div>
+    <section id="bar">
+      <div id="prompt">
+        <div id="prompt-text"></div>
+        <div id="cues"></div>
+      </div>
+      <div id="actions"></div>
+    </section>
+    <ol id="scores"></ol>
+  </main>
+
+  <!-- Private screens for the cue giver -->
+  <div id="cover" class="cover" hidden>
+    <div class="cover-box" id="cover-box"></div>
+  </div>
+
+  <div id="toast" role="status" hidden></div>
+
+  <dialog id="rules">
+    <h2>How to play</h2>
+    <ol>
+      <li>The cue giver looks at a card of 4 colours in private and chooses one.</li>
+      <li>They give a <b>one-word</b> cue. It can't be a colour name or point to letters, numbers or places on the board.</li>
+      <li>Going clockwise, every other player taps a square for their first cone. Squares can't be shared.</li>
+      <li>The cue giver gives a second cue of up to <b>two words</b>. Going anticlockwise, everyone places a second cone.</li>
+      <li>Reveal: <b>3</b> points on the colour, <b>2</b> inside the frame around it, <b>1</b> just outside the frame. The cue giver gets <b>1</b> point for every cone inside the frame.</li>
+      <li>The game ends when everyone has been cue giver (twice each with 3–6 players, once with 7+). Most points wins.</li>
+    </ol>
+    <p class="hint">These board colours are an approximation of the printed board.</p>
+    <div class="dlg-actions"><button type="button" class="ctl primary" data-close>OK</button></div>
+  </dialog>
+
+  <dialog id="confirm">
+    <p id="confirm-text"></p>
+    <div class="dlg-actions">
+      <button type="button" class="ctl" data-close>Cancel</button>
+      <button type="button" class="ctl danger" id="confirm-ok">OK</button>
+    </div>
+  </dialog>
+</body>
+</html>
