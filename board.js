@@ -137,14 +137,14 @@ export const cueGiverPoints = (cells, target) =>
   cells.filter((c) => ringDistance(c, target) <= 1).length;
 
 // A card shows four colours. Keep them at least 3 squares apart so they're different
-// enough to be worth choosing between. Never the top or bottom row (rows A and P,
-// Alex's choice); columns 1 and 30 are still allowed.
+// enough to be worth choosing between. Never on the outer edge of the board (rows A and P,
+// columns 1 and 30; Alex's choice).
 export function drawCard(rand = Math.random) {
   for (;;) {
     const card = [];
     let tries = 0;
     while (card.length < 4 && tries++ < 200) {
-      const c = COLS + Math.floor(rand() * COLS * (ROWS - 2));
+      const c = (1 + Math.floor(rand() * (ROWS - 2))) * COLS + 1 + Math.floor(rand() * (COLS - 2));
       if (card.every((o) => ringDistance(o, c) >= 3)) card.push(c);
     }
     if (card.length === 4) return card;
