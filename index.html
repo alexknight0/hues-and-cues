@@ -21,7 +21,12 @@
     <h1>Hues &amp; Cues</h1>
     <button id="version" type="button" class="version" data-state="checking" aria-label="Checking for updates…"><i></i><span></span></button>
     <span id="round-info"></span>
-    <span class="grow"></span>
+    <!-- What to do now, the cues, and this step's buttons. Up here so the board can use the rest of the screen. -->
+    <div id="prompt">
+      <div id="prompt-text"></div>
+      <div id="cues"></div>
+    </div>
+    <div id="actions"></div>
     <button id="rules-btn" type="button" class="ctl">Rules</button>
     <button id="new-btn" type="button" class="ctl">New game</button>
   </header>
@@ -48,13 +53,6 @@
   <!-- The game -->
   <main id="game" class="screen" hidden>
     <div id="board-wrap"><div id="board" aria-label="Colour board"></div></div>
-    <section id="bar">
-      <div id="prompt">
-        <div id="prompt-text"></div>
-        <div id="cues"></div>
-      </div>
-      <div id="actions"></div>
-    </section>
     <ol id="scores"></ol>
   </main>
 

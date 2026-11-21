@@ -197,8 +197,9 @@ function buildBoard() {
   // Fit the board to the space it has: 30 squares plus labels across, 16 plus labels down.
   const wrap = $("#board-wrap");
   new ResizeObserver(() => {
-    const size = Math.floor(Math.min(wrap.clientWidth / (COLS + 1.4), wrap.clientHeight / (ROWS + 1.4)));
+    const size = Math.floor(Math.min(wrap.clientWidth / (COLS + 1.2), wrap.clientHeight / (ROWS + 1.2)));
     boardEl.style.setProperty("--cell", `${Math.max(size, 10)}px`);
+    positionPopup();
   }).observe(wrap);
 }
 
@@ -233,8 +234,34 @@ function frameEl(target, radius, cls) {
   return d;
 }
 
+// The Place button pops up next to the square that was just tapped.
+function placePopup() {
+  const sw = el("span", { className: "swatch" });
+  sw.style.background = COLOURS[S.pending];
+  const ok = button("", confirmCone, "primary big");
+  ok.replaceChildren(sw, `Place on ${cellName(S.pending)}`);
+  return el("div", { className: "place-pop", id: "place-pop" }, ok);
+}
+
+// Above the square if there's room in the board, otherwise below; kept inside the board sideways.
+function positionPopup() {
+  const pop = $("#place-pop");
+  if (!pop || S.pending == null) return;
+  const cell = cellEls[S.pending];
+  const gap = 10;
+  let top = cell.offsetTop - pop.offsetHeight - gap;
+  const below = top < 0;
+  if (below) top = cell.offsetTop + cell.offsetHeight + gap;
+  const centre = cell.offsetLeft + cell.offsetWidth / 2;
+  const left = Math.min(Math.max(centre - pop.offsetWidth / 2, 0), boardEl.clientWidth - pop.offsetWidth);
+  pop.style.top = `${top}px`;
+  pop.style.left = `${left}px`;
+  pop.classList.toggle("below", below);
+  pop.style.setProperty("--arrow", `${centre - left}px`);
+}
+
 function renderBoard() {
-  for (const e of boardEl.querySelectorAll(".cone, .frame, .points")) e.remove();
+  for (const e of boardEl.querySelectorAll(".cone, .frame, .points, .place-pop")) e.remove();
   for (const e of boardEl.querySelectorAll(".cell.target")) e.classList.remove("target");
   if (!S) return;
   const scored = S.phase === "scored" || S.phase === "over";
@@ -246,7 +273,11 @@ function renderBoard() {
       if (pts) cell.append(el("div", { className: "points", textContent: `+${pts}` }));
     }
   }
-  if (S.phase === "guess" && S.pending != null) cellEls[S.pending].append(coneEl(guesser(), "pending"));
+  if (S.phase === "guess" && S.pending != null) {
+    cellEls[S.pending].append(coneEl(guesser(), "pending"));
+    boardEl.append(placePopup());
+    positionPopup();
+  }
   if (scored && S.target != null) {
     cellEls[S.target].classList.add("target");
     boardEl.append(frameEl(S.target, 2, "outer"), frameEl(S.target, 1, "inner"));
@@ -309,13 +340,6 @@ function renderBar() {
         `: tap a square for your ${S.pass === 1 ? "first" : "second"} cone.`,
         el("small", { textContent: ` ${left} to go` }));
       text.querySelector(".dot").style.background = S.players[p].color;
-      const ok = button("Place cone", confirmCone, "primary");
-      if (S.pending != null) {
-        const sw = el("span", { className: "swatch" });
-        sw.style.background = COLOURS[S.pending];
-        ok.replaceChildren(sw, `Place on ${cellName(S.pending)}`);
-      } else ok.disabled = true;
-      actions.append(ok);
       break;
     }
     case "ready":
@@ -541,7 +565,9 @@ function render() {
   $("#game").hidden = !S;
   $("#new-btn").hidden = !S;
   $("#round-info").textContent = S && S.phase !== "over" ? `Round ${S.round + 1} of ${totalRounds()}` : "";
+  document.body.classList.toggle("playing", !!S);
   if (!S) {
+    for (const id of ["#prompt-text", "#cues", "#actions"]) $(id).replaceChildren();
     renderSetup();
     renderCover();
     return;
