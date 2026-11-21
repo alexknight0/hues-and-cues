@@ -202,7 +202,7 @@ function buildBoard() {
     for (let c = 0; c < COLS; c++) {
       const cell = r * COLS + c;
       const d = el("div", { className: "cell" });
-      d.style.background = COLOURS[cell];
+      d.style.backgroundColor = COLOURS[cell]; // not `background`, which would reset background-clip
       d.dataset.cell = cell;
       cellEls.push(d);
       boardEl.append(d);

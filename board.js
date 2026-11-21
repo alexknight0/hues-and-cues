@@ -2,17 +2,26 @@
 //
 // The real board is 30 columns (1-30) by 16 rows (A-P): hue changes along a row and
 // rows run from pale at the top to dark at the bottom. These colours are an
-// approximation built in OKLCH: each row has one lightness, each column one hue, and
-// the chroma is pushed as far as sRGB allows, so the board is as vivid as a screen gets.
+// approximation built in OKLCH: each row has one lightness and each column one hue.
+// - Hues are spaced so neighbouring columns differ by the same amount to the eye
+//   (equal steps in OKLab at a mid row), not by equal degrees, which wasted columns on
+//   near-identical greens and teals and jumped through the reds.
+// - Chroma follows a smooth curve per row (soft pastels at the top, richest in the
+//   middle rows, muted at the bottom), capped by what sRGB can show. Without the cap
+//   some hues (cyan, magenta) went neon while their neighbours couldn't follow.
 
 export const COLS = 30;
 export const ROWS = 16;
 export const ROW_NAMES = "ABCDEFGHIJKLMNOP";
 
-const L_TOP = 0.93;
-const L_BOTTOM = 0.33;
-const HUE_START = 18; // a pinkish red, so column 1 sits next to column 30 on the colour wheel
-const CHROMA_SHARE = 0.96; // just inside the gamut edge, so neighbouring rows stay distinct
+const L_TOP = 0.94;
+const L_BOTTOM = 0.32;
+const HUE_START = 20; // a pinkish red, so column 1 sits next to column 30 on the colour wheel
+const C_PEAK = 0.17; // chroma of the richest row
+const C_TOP = 0.07; // chroma of the palest row
+const C_BOTTOM = 0.11; // chroma of the darkest row
+const PEAK_ROW = 0.42; // where (0 = top, 1 = bottom) the board is most colourful
+const GAMUT_SHARE = 0.97; // stay a little inside the sRGB edge
 
 export const cellIndex = (row, col) => row * COLS + col;
 export const rowOf = (cell) => Math.floor(cell / COLS);
@@ -48,17 +57,60 @@ function toHex(rgb) {
   );
 }
 
-function cellColour(row, col) {
-  const L = L_TOP + ((L_BOTTOM - L_TOP) * row) / (ROWS - 1);
-  const h = (HUE_START + (360 * col) / COLS) % 360;
+function maxChroma(L, h) {
   let lo = 0;
   let hi = 0.4;
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 22; i++) {
     const mid = (lo + hi) / 2;
     if (inGamut(oklchToLinear(L, mid, h))) lo = mid;
     else hi = mid;
   }
-  return { hex: toHex(oklchToLinear(L, lo * CHROMA_SHARE, h)), L };
+  return lo * GAMUT_SHARE;
+}
+
+// Smooth bump: C_TOP at t = 0, C_PEAK at PEAK_ROW, C_BOTTOM at t = 1.
+function rowChroma(t) {
+  const [edge, u] = t < PEAK_ROW ? [C_TOP, t / PEAK_ROW] : [C_BOTTOM, (1 - t) / (1 - PEAK_ROW)];
+  const s = Math.sin((u * Math.PI) / 2);
+  return edge + (C_PEAK - edge) * s;
+}
+
+const chromaAt = (L, h, C) => Math.min(C, maxChroma(L, h));
+
+// Column hues: walk round the wheel in small steps at a mid row, measure the OKLab
+// distance travelled, and put the 30 columns at equal distances along that path.
+const HUES = (() => {
+  const L = 0.66;
+  const C = rowChroma(PEAK_ROW + 0.1);
+  const steps = 720;
+  const lab = (h) => {
+    const c = chromaAt(L, h, C);
+    return [L, c * Math.cos((h * Math.PI) / 180), c * Math.sin((h * Math.PI) / 180)];
+  };
+  const len = [0];
+  let prev = lab(HUE_START);
+  for (let i = 1; i <= steps; i++) {
+    const cur = lab(HUE_START + (360 * i) / steps);
+    len.push(len[i - 1] + Math.hypot(cur[0] - prev[0], cur[1] - prev[1], cur[2] - prev[2]));
+    prev = cur;
+  }
+  const total = len[steps];
+  const hues = [];
+  let j = 0;
+  for (let c = 0; c < COLS; c++) {
+    const want = (total * c) / COLS;
+    while (len[j + 1] < want) j++;
+    const f = (want - len[j]) / (len[j + 1] - len[j] || 1);
+    hues.push((HUE_START + (360 * (j + f)) / steps) % 360);
+  }
+  return hues;
+})();
+
+function cellColour(row, col) {
+  const t = row / (ROWS - 1);
+  const L = L_TOP + (L_BOTTOM - L_TOP) * t;
+  const h = HUES[col];
+  return { hex: toHex(oklchToLinear(L, chromaAt(L, h, rowChroma(t)), h)), L };
 }
 
 // COLOURS[cell] = "#rrggbb"; LIGHT[cell] = true when dark text reads better on it.
